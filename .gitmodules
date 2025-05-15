@@ -1,0 +1,3 @@
+[submodule "lib/sparkweaver.core"]
+	path = lib/sparkweaver.core
+	url = git@github.com:rzuppur/sparkweaver.core.git
