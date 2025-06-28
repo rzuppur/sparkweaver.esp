@@ -46,6 +46,8 @@ namespace {
         stopAdvertising();
         unbindClients();
         startAdvertising();
+        Serial.print("Password changed: ");
+        Serial.println(ble_pw);
     }
 
     class ChrTreeCallbacks final : public NimBLECharacteristicCallbacks {
@@ -80,7 +82,7 @@ namespace {
         {
             xSemaphoreTake(tree_chr_mutex, portMAX_DELAY);
             if (chunk_number > CHUNK_COUNT_MAX) {
-                Serial.println("Too many chunks!");
+                Serial.println("Bluetooth read tree: Too many chunks!");
                 p_chr->setValue(CHUNK_TRANSMISSION_ERROR);
                 resetRead();
             } else if (data_offset < full_data.size()) {
@@ -88,9 +90,12 @@ namespace {
                 const size_t chunk_size = std::min(max_chunk, full_data.size() - data_offset);
                 p_chr->setValue(static_cast<char>(chunk_number++) + full_data.substr(data_offset, chunk_size));
                 data_offset += chunk_size;
+                Serial.print("Bluetooth read tree: chunk ");
+                Serial.println(chunk_number);
             } else {
                 p_chr->setValue(CHUNK_TRANSMISSION_END);
                 resetRead();
+                Serial.println("Bluetooth read tree: complete");
             }
             xSemaphoreGive(tree_chr_mutex);
         }
@@ -102,14 +107,19 @@ namespace {
                 packet.size() == 1 && packet.at(0) == CHUNK_TRANSMISSION_END) {
                 Tree::setTree(write_data);
                 resetWrite();
+                Serial.println("Bluetooth write tree: complete");
             } else if (packet.size() <= 1) {
                 resetWrite();
+                Serial.println("Bluetooth write tree: invalid");
             } else {
                 if (packet.at(0) == write_chunk) {
+                    Serial.print("Bluetooth write tree: chunk ");
+                    Serial.println(write_chunk);
                     write_data += packet.substr(1, packet.size() - 1);
                     write_chunk += 1;
                 } else {
                     resetWrite();
+                    Serial.println("Bluetooth write tree: chunk mismatch");
                 }
             }
         }
@@ -138,7 +148,16 @@ namespace {
     ChrPwCallbacks   chr_pw_callbacks;
 
     class ServerCallbacks final : public NimBLEServerCallbacks {
-        void onConnect(NimBLEServer* p_server) override { chr_tree_callbacks.reset(); }
+        void onConnect(NimBLEServer* p_server) override
+        {
+            chr_tree_callbacks.reset();
+            Serial.println("Bluetooth: client connected");
+        }
+
+        void onDisconnect(NimBLEServer* pServer) override
+        {
+            Serial.println("Bluetooth: client disconnected");
+        }
     };
 
     ServerCallbacks server_callbacks;
@@ -156,16 +175,16 @@ namespace {
         p_advertising->addServiceUUID(SVC_SW);
         p_advertising->start();
 
-        Serial.println("Bluetooth advertising");
+        Serial.println("Bluetooth: advertising");
     }
 
     void stopAdvertising()
     {
         if (p_advertising != nullptr && p_advertising->isAdvertising()) {
             p_advertising->stop();
-            Serial.println("Bluetooth stopped advertising");
+            Serial.println("Bluetooth: stopped advertising");
         } else {
-            Serial.println("Bluetooth advertising already stopped");
+            Serial.println("Bluetooth: advertising already stopped");
         }
     }
 
@@ -175,7 +194,7 @@ namespace {
         for (uint8_t i = 0; i < n_clients; i++) {
             NimBLEDevice::deleteBond(NimBLEDevice::getBondedAddress(i));
         }
-        Serial.println(("Bluetooth unbound clients (" + std::to_string(n_clients) + ")").c_str());
+        Serial.println(("Bluetooth: unbound clients (" + std::to_string(n_clients) + ")").c_str());
     }
 
     [[noreturn]] void task(void*)
