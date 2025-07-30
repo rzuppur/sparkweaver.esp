@@ -1,58 +1,86 @@
 #include "tree.h"
 
 #include <Arduino.h>
-#include <Preferences.h>
+
+#ifdef DISABLED
+#undef DISABLED
+#endif
+
 #include <SparkWeaverCore.h>
+#include <LittleFS.h>
 #include <bluetooth.h>
 
 namespace {
     SparkWeaverCore::Builder builder;
-    Preferences              preferences;
 
-    std::string       tree_string;
-    SemaphoreHandle_t tree_mutex;
+    std::vector<uint8_t> tree;
+    SemaphoreHandle_t    tree_mutex;
 }
 
 namespace Tree {
-    void init()
-    {
-        tree_mutex = xSemaphoreCreateMutex();
-        if (tree_mutex == nullptr) {
-            Serial.println("Failed to create mutex");
-            return;
-        }
+    constexpr auto TREE_FILE_PATH = "/tree.bin";
 
-        preferences.begin("tree", false);
-        if (preferences.isKey("tree")) {
-            setTree(preferences.getString("tree").c_str());
+    std::vector<uint8_t> loadTreeFromStorage()
+    {
+        std::vector<uint8_t> tree_file{};
+        if (LittleFS.exists(TREE_FILE_PATH)) {
+            if (File file = LittleFS.open(TREE_FILE_PATH, "r")) {
+                if (const size_t size = file.size(); size > 0) {
+                    tree_file.resize(size);
+                    if (const auto read = file.read(tree_file.data(), size); read != size) {
+                        tree_file.clear();
+                    }
+                }
+                file.close();
+            }
         }
-        if (tree_string.empty()) {
-            setTree("");
-            preferences.remove("tree");
+        return tree_file;
+    }
+
+    void storeTreeToStorage(const std::vector<uint8_t>& tree)
+    {
+        if (tree.size() <= 1) {
+            LittleFS.remove(TREE_FILE_PATH);
+        } else if (File file = LittleFS.open(TREE_FILE_PATH, "w")) {
+            file.write(tree.data(), tree.size());
+            file.close();
         }
     }
 
-    std::string getTree()
+    void init()
+    {
+        tree_mutex = xSemaphoreCreateMutex();
+        if (!LittleFS.begin(true)) {
+            Serial.println("LittleFS mount failed");
+        }
+
+        setTree(loadTreeFromStorage());
+        if (tree.empty()) {
+            setTree({SparkWeaverCore::TREE_VERSION});
+        }
+    }
+
+    std::vector<uint8_t> getTree()
     {
         xSemaphoreTake(tree_mutex, portMAX_DELAY);
-        std::string result = tree_string;
+        std::vector<uint8_t> result = tree;
         xSemaphoreGive(tree_mutex);
         return result;
     }
 
-    void setTree(const std::string& tree)
+    void setTree(const std::vector<uint8_t>& new_tree)
     {
         xSemaphoreTake(tree_mutex, portMAX_DELAY);
         try {
-            builder.build(tree);
-            tree_string = tree;
-            preferences.putString("tree", tree.c_str());
+            builder.build(new_tree);
+            tree = new_tree;
+            storeTreeToStorage(tree);
             Serial.println("Builder: success");
         } catch (const std::exception& e) {
             Serial.println(e.what());
-            tree_string = "";
+            tree.clear();
         }
-        Bluetooth::setTree(tree_string);
+        Bluetooth::setTree(tree);
         xSemaphoreGive(tree_mutex);
     }
 

@@ -51,11 +51,11 @@ namespace {
     }
 
     class ChrTreeCallbacks final : public NimBLECharacteristicCallbacks {
-        size_t  data_offset  = 0;
-        uint8_t chunk_number = CHUNK_FIRST_INDEX;
+        std::ptrdiff_t data_offset  = 0;
+        uint8_t        chunk_number = CHUNK_FIRST_INDEX;
 
-        uint8_t     write_chunk = CHUNK_FIRST_INDEX;
-        std::string write_data;
+        uint8_t              write_chunk = CHUNK_FIRST_INDEX;
+        std::vector<uint8_t> write_data;
 
         void resetRead()
         {
@@ -66,11 +66,11 @@ namespace {
         void resetWrite()
         {
             write_chunk = CHUNK_FIRST_INDEX;
-            write_data  = "";
+            write_data.clear();
         }
 
     public:
-        std::string full_data;
+        std::vector<uint8_t> full_data;
 
         void reset()
         {
@@ -86,12 +86,16 @@ namespace {
                 p_chr->setValue(CHUNK_TRANSMISSION_ERROR);
                 resetRead();
             } else if (data_offset < full_data.size()) {
-                const size_t max_chunk  = NimBLEDevice::getMTU() - 16;
-                const size_t chunk_size = std::min(max_chunk, full_data.size() - data_offset);
-                p_chr->setValue(static_cast<char>(chunk_number++) + full_data.substr(data_offset, chunk_size));
-                data_offset += chunk_size;
                 Serial.print("Bluetooth read tree: chunk ");
                 Serial.println(chunk_number);
+                const std::ptrdiff_t max_chunk  = NimBLEDevice::getMTU() - 16;
+                const std::ptrdiff_t chunk_size = std::min(
+                    max_chunk,
+                    static_cast<std::ptrdiff_t>(full_data.size()) - data_offset);
+                std::vector chunk_data(full_data.begin() + data_offset, full_data.begin() + data_offset + chunk_size);
+                chunk_data.insert(chunk_data.begin(), chunk_number++);
+                p_chr->setValue(chunk_data);
+                data_offset += chunk_size;
             } else {
                 p_chr->setValue(CHUNK_TRANSMISSION_END);
                 resetRead();
@@ -102,8 +106,7 @@ namespace {
 
         void onWrite(NimBLECharacteristic* p_chr) override
         {
-            const auto value = p_chr->getValue();
-            if (const std::string packet(value.begin(), value.end());
+            if (const std::vector<uint8_t>& packet = p_chr->getValue();
                 packet.size() == 1 && packet.at(0) == CHUNK_TRANSMISSION_END) {
                 Tree::setTree(write_data);
                 resetWrite();
@@ -115,7 +118,7 @@ namespace {
                 if (packet.at(0) == write_chunk) {
                     Serial.print("Bluetooth write tree: chunk ");
                     Serial.println(write_chunk);
-                    write_data += packet.substr(1, packet.size() - 1);
+                    write_data.insert(write_data.end(), packet.begin() + 1, packet.end());
                     write_chunk += 1;
                 } else {
                     resetWrite();
@@ -207,7 +210,7 @@ namespace {
 
         p_server = NimBLEDevice::createServer();
         p_server->setCallbacks(&server_callbacks);
-        p_svc_sw = p_server->createService(SVC_SW);
+        p_svc_sw   = p_server->createService(SVC_SW);
         p_chr_tree =
             p_svc_sw->createCharacteristic(CHR_TREE, READ | READ_ENC | READ_AUTHEN | WRITE | WRITE_ENC | WRITE_AUTHEN);
         p_chr_pw =
@@ -225,10 +228,6 @@ namespace Bluetooth {
     void init()
     {
         tree_chr_mutex = xSemaphoreCreateMutex();
-        if (tree_chr_mutex == nullptr) {
-            Serial.println("Failed to create mutex");
-            return;
-        }
 
         preferences.begin("bluetooth", false);
         if (preferences.isKey("pw")) {
@@ -243,7 +242,7 @@ namespace Bluetooth {
         xTaskCreatePinnedToCore(task, "bluetooth", 4096, nullptr, 1, &handle, CONFIG_BT_NIMBLE_PINNED_TO_CORE);
     }
 
-    void setTree(const std::string& tree)
+    void setTree(const std::vector<uint8_t>& tree)
     {
         xSemaphoreTake(tree_chr_mutex, portMAX_DELAY);
         chr_tree_callbacks.full_data = tree;

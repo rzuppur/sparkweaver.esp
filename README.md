@@ -8,7 +8,7 @@ ESP32 app to run [SparkWeaver](https://github.com/rzuppur/sparkweaver.core) DMX 
 
 ## You need
 
-- ESP32 development board. Currently only `esp32-wroom-32` target is supported, but it should be trivial to add other targets. If you remove bluetooth remote control capabilities, even a simple Arduino should work.
+- ESP32 development board.
 - a DMX board or build your own using a chip like the MAX485. Inexpensive DMX shields (like [Keyestudio KS0529](https://wiki.keyestudio.com/KS0529_Keyestudio_DMX%EF%BC%88RDM%EF%BC%89Shield)) with XLR connectors already attached are the easiest option. There isn’t one definitive guide to recommend, so please search the web to find more info relevant to your use case.
 - connect ESP32 to DMX board `enable`, `RX` and `TX` pins. Defaults are `4`, `16`, `17`. Connect 3.3 or 5 V power to the DMX board.
 - install [PlatformIO](https://platformio.org/) to build and flash the project to your device.
