@@ -11,7 +11,7 @@
 #include <bluetooth.h>
 
 namespace {
-    SparkWeaverCore::Builder builder;
+    SparkWeaverCore::Engine engine;
 
     std::vector<uint8_t> tree;
     SemaphoreHandle_t    tree_mutex;
@@ -72,7 +72,7 @@ namespace Tree {
     {
         xSemaphoreTake(tree_mutex, portMAX_DELAY);
         try {
-            builder.build(new_tree);
+            engine.build(new_tree);
             tree = new_tree;
             storeTreeToStorage(tree);
             Serial.println("Builder: success");
@@ -87,7 +87,7 @@ namespace Tree {
     uint8_t* tick() noexcept
     {
         xSemaphoreTake(tree_mutex, portMAX_DELAY);
-        uint8_t* p_result = builder.tick();
+        uint8_t* p_result = engine.tick();
         xSemaphoreGive(tree_mutex);
         return p_result;
     }
