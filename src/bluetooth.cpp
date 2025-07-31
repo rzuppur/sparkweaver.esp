@@ -17,9 +17,10 @@ namespace {
     constexpr uint8_t CHUNK_TRANSMISSION_END   = 0x00;
     constexpr uint8_t CHUNK_TRANSMISSION_ERROR = 0xFF;
 
-    constexpr auto SVC_SW   = "00001000-d8b4-4b1a-b585-d4931d8dc888";
-    constexpr auto CHR_TREE = "00001001-d8b4-4b1a-b585-d4931d8dc888";
-    constexpr auto CHR_PW   = "00001002-d8b4-4b1a-b585-d4931d8dc888";
+    constexpr auto SVC_SW      = "00001000-d8b4-4b1a-b585-d4931d8dc888";
+    constexpr auto CHR_TREE    = "00001001-d8b4-4b1a-b585-d4931d8dc888";
+    constexpr auto CHR_PW      = "00001002-d8b4-4b1a-b585-d4931d8dc888";
+    constexpr auto CHR_TRIGGER = "00001003-d8b4-4b1a-b585-d4931d8dc888";
 
     Preferences preferences;
     uint32_t    ble_pw = PW_DEFAULT;
@@ -30,6 +31,7 @@ namespace {
     NimBLEService*        p_svc_sw;
     NimBLECharacteristic* p_chr_tree;
     NimBLECharacteristic* p_chr_pw;
+    NimBLECharacteristic* p_chr_trigger;
     NimBLEAdvertising*    p_advertising;
 
     void startAdvertising();
@@ -147,8 +149,27 @@ namespace {
         }
     };
 
-    ChrTreeCallbacks chr_tree_callbacks;
-    ChrPwCallbacks   chr_pw_callbacks;
+    class ChrTriggerCallbacks final : public NimBLECharacteristicCallbacks {
+    public:
+        void onRead(NimBLECharacteristic* p_chr) override
+        {
+            p_chr->setValue(Tree::listExternalTriggers());
+        }
+
+        void onWrite(NimBLECharacteristic* p_chr) override
+        {
+            const auto value = p_chr->getValue();
+            if (value.size() != 1) {
+                return;
+            }
+            const auto data = value.data();
+            Tree::triggerExternalTrigger(data[0]);
+        }
+    };
+
+    ChrTreeCallbacks    chr_tree_callbacks;
+    ChrPwCallbacks      chr_pw_callbacks;
+    ChrTriggerCallbacks chr_trigger_callbacks;
 
     class ServerCallbacks final : public NimBLEServerCallbacks {
         void onConnect(NimBLEServer* p_server) override
@@ -171,6 +192,7 @@ namespace {
 
         p_chr_tree->setCallbacks(&chr_tree_callbacks);
         p_chr_pw->setCallbacks(&chr_pw_callbacks);
+        p_chr_trigger->setCallbacks(&chr_trigger_callbacks);
         p_svc_sw->start();
 
         p_advertising = NimBLEDevice::getAdvertising();
@@ -215,6 +237,10 @@ namespace {
             p_svc_sw->createCharacteristic(CHR_TREE, READ | READ_ENC | READ_AUTHEN | WRITE | WRITE_ENC | WRITE_AUTHEN);
         p_chr_pw =
             p_svc_sw->createCharacteristic(CHR_PW, READ | READ_ENC | READ_AUTHEN | WRITE | WRITE_ENC | WRITE_AUTHEN);
+        p_chr_trigger =
+            p_svc_sw->createCharacteristic(
+                CHR_TRIGGER,
+                READ | READ_ENC | READ_AUTHEN | WRITE | WRITE_ENC | WRITE_AUTHEN);
 
         startAdvertising();
 

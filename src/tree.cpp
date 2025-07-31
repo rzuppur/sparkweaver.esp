@@ -91,4 +91,14 @@ namespace Tree {
         xSemaphoreGive(tree_mutex);
         return p_result;
     }
+
+    std::vector<uint8_t> listExternalTriggers() noexcept
+    {
+        return engine.listExternalTriggers();
+    }
+
+    void triggerExternalTrigger(const uint8_t id) noexcept
+    {
+        engine.triggerExternalTrigger(id);
+    }
 }
